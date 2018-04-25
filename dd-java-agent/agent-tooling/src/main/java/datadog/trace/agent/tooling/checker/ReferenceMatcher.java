@@ -3,6 +3,8 @@ package datadog.trace.agent.tooling.checker;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.agent.builder.AgentBuilder.Transformer;
+import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.utility.JavaModule;
 
@@ -62,6 +64,15 @@ public class ReferenceMatcher implements AgentBuilder.RawMatcher {
     return new ElementMatcher<MethodDescription>() {
       public boolean matches(MethodDescription target) {
         return matcher.matches(target);
+      }
+    };
+  }
+
+  public Transformer assertSafeTransformation(String... adviceClassNames) {
+    return new Transformer() {
+      @Override
+      public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder, TypeDescription typeDescription, ClassLoader classLoader, JavaModule module) {
+        return builder;
       }
     };
   }

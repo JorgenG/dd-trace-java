@@ -9,6 +9,11 @@ import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.jar.asm.*;
 import net.bytebuddy.pool.TypePool;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+
 /**
  * Visit instrumentation classes. For each decorator, add a matcher which asserts that the classloader being instrumented can safely load all references made by instrumentation.
  */
@@ -64,38 +69,111 @@ public class CheckerVisitor implements AsmVisitorWrapper {
       if ("<init>".equals(name)) {
         methodVisitor = new InitializeFieldVisitor(methodVisitor);
       }
-      return new ReplaceIsSafeVisitor(methodVisitor);
+      // return new ReplaceIsSafeVisitor(methodVisitor);
+      return new InsertCheckerTransformer(methodVisitor);
     }
 
     @Override
     public void visitEnd() {
-      super.visitField(Opcodes.ACC_PUBLIC, "adviceChecker", Type.getDescriptor(ReferenceMatcher.class), null, null);
+      super.visitField(Opcodes.ACC_PUBLIC, "referenceMatcher", Type.getDescriptor(ReferenceMatcher.class), null, null);
       super.visitEnd();
     }
 
+
+    public class InsertCheckerTransformer extends MethodVisitor {
+      // it would be nice to manage the state with an enum, but that requires this class to be non-static
+      private final int INIT = 0;
+      // SomeClass
+      private final int PREVIOUS_INSTRUCTION_LDC = 1;
+      // SomeClass.getName()
+      private final int PREVIOUS_INSTRUCTION_GET_CLASS_NAME = 2;
+
+      private String lastClassLDC = null;
+
+      private Collection<String> adviceClassNames = new HashSet<>();
+      private int STATE = INIT;
+
+      public InsertCheckerTransformer(MethodVisitor methodVisitor) {
+        super(Opcodes.ASM6, methodVisitor);
+      }
+
+      public void reset() {
+        STATE = INIT;
+        lastClassLDC = null;
+        adviceClassNames.clear();
+      }
+
+      @Override
+      public void visitMethodInsn(final int opcode, final String owner, final String name, final String descriptor, final boolean isInterface) {
+        if (name.equals("getName")) {
+          if (STATE == PREVIOUS_INSTRUCTION_LDC) {
+            STATE = PREVIOUS_INSTRUCTION_GET_CLASS_NAME;
+          }
+        } else if (name.equals("advice")) {
+          if (STATE == PREVIOUS_INSTRUCTION_GET_CLASS_NAME) {
+            adviceClassNames.add(lastClassLDC);
+          }
+          // add last LDC/ToString to adivce list
+        } else if (name.equals("asDecorator")) {
+          this.visitVarInsn(Opcodes.ALOAD, 0);
+          this.visitFieldInsn(Opcodes.GETFIELD, instrumentationClassName, "referenceMatcher", Type.getDescriptor(ReferenceMatcher.class));
+          mv.visitIntInsn(Opcodes.BIPUSH, adviceClassNames.size());
+          mv.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/String");
+          int i = 0;
+          for (String adviceClassName : adviceClassNames) {
+            mv.visitInsn(Opcodes.DUP);
+            mv.visitIntInsn(Opcodes.BIPUSH, i);
+            mv.visitLdcInsn(adviceClassName);
+            mv.visitInsn(Opcodes.AASTORE);
+            ++i;
+          }
+          mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "datadog/trace/agent/tooling/checker/ReferenceMatcher", "assertSafeTransformation", "([Ljava/lang/String;)Lnet/bytebuddy/agent/builder/AgentBuilder$Transformer;", false);
+          mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "net/bytebuddy/agent/builder/AgentBuilder$Identified$Narrowable", "transform", "(Lnet/bytebuddy/agent/builder/AgentBuilder$Transformer;)Lnet/bytebuddy/agent/builder/AgentBuilder$Identified$Extendable;", true);
+          reset();
+        } else {
+          STATE = INIT;
+          lastClassLDC = null;
+        }
+        super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+      }
+
+      @Override
+      public void visitLdcInsn(final Object value) {
+        if (value instanceof Type) {
+          Type type = (Type) value;
+          if (type.getSort() == Type.OBJECT) {
+            lastClassLDC = type.getClassName();
+            STATE = PREVIOUS_INSTRUCTION_LDC;
+            type.getClassName();
+          }
+        }
+        super.visitLdcInsn(value);
+      }
+    }
+
+    /**
+     * Replace:<br/>
+     * &nbsp&nbsp advice(elementMatcher, className)<br/>
+     * Into:<br/>
+     *  &nbsp&nbsp advice(this.referenceMatcher.createElementMatcher(elementMatcher, className), className)
+     */
     public class ReplaceIsSafeVisitor extends MethodVisitor {
       public ReplaceIsSafeVisitor(MethodVisitor methodVisitor) {
         super(Opcodes.ASM6, methodVisitor);
       }
 
-      /**
-       * Turns this bytecode:<br/>
-       * &nbsp&nbsp advice(elementMatcher, className)<br/>
-       * Into:<br/>
-       *  &nbsp&nbsp advice(this.adviceChecker.createElementMatcher(elementMatcher, className), className)
-       */
       @Override
       public void visitMethodInsn(final int opcode, final String owner, final String name, final String descriptor, final boolean isInterface) {
         if(name.equals("advice")) {
           // stack: [class, matcher]
           this.visitVarInsn(Opcodes.ALOAD, 0);
           // stack: [this, class, matcher]
-          this.visitFieldInsn(Opcodes.GETFIELD, instrumentationClassName, "adviceChecker", Type.getDescriptor(ReferenceMatcher.class));
-          // stack: [adviceChecker, class, matcher]
+          this.visitFieldInsn(Opcodes.GETFIELD, instrumentationClassName, "referenceMatcher", Type.getDescriptor(ReferenceMatcher.class));
+          // stack: [referenceMatcher, class, matcher]
           this.visitInsn(Opcodes.DUP2_X1);
-          // stack: [adviceChecker, class, matcher, adviceChecker, class]
+          // stack: [referenceMatcher, class, matcher, referenceMatcher, class]
           this.visitInsn(Opcodes.POP);
-          // stack: [class, matcher, adviceChecker, class]
+          // stack: [class, matcher, referenceMatcher, class]
           this.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "datadog/trace/agent/tooling/checker/ReferenceMatcher", "createElementMatcher", "(Lnet/bytebuddy/matcher/ElementMatcher;Ljava/lang/String;)Lnet/bytebuddy/matcher/ElementMatcher;", false);
           // stack: [safe-matcher, class]
           this.visitInsn(Opcodes.SWAP);
@@ -105,6 +183,9 @@ public class CheckerVisitor implements AsmVisitorWrapper {
       }
     }
 
+    /**
+     * Append a field initializer to the end of a method.
+     */
     public class InitializeFieldVisitor extends MethodVisitor {
       public InitializeFieldVisitor(MethodVisitor methodVisitor) {
         super(Opcodes.ASM6, methodVisitor);
@@ -119,7 +200,7 @@ public class CheckerVisitor implements AsmVisitorWrapper {
           mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "datadog/trace/agent/tooling/checker/ReferenceMatcher", "<init>", "()V", false);
           super.visitFieldInsn(Opcodes.PUTFIELD,
             instrumentationClassName.replace('.', '/'),
-            "adviceChecker",
+            "referenceMatcher",
             Type.getDescriptor(ReferenceMatcher.class));
         }
         super.visitInsn(opcode);
