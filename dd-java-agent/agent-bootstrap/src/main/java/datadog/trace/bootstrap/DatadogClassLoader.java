@@ -33,4 +33,9 @@ public class DatadogClassLoader extends URLClassLoader {
       return bootstrapResource;
     }
   }
+
+  /** A classloader which can see the bootstrap classpath and the appended datadog bootstrap jar. **/
+  public ClassLoader getBootstrapResourceLocator() {
+    return bootstrapResourceLocator;
+  }
 }

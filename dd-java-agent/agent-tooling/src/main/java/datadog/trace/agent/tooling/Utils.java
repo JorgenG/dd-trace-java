@@ -39,6 +39,11 @@ public class Utils {
     return className.replace('.', '/') + ".class";
   }
 
+  /** com/foo/Bar.class -> com.foo.Bar */
+  public static String getClassName(final String resourceName) {
+    return resourceName.replaceAll("\\.class\\$", "").replace('/', '.');
+  }
+
   public static boolean isClassLoaded(final String className, final ClassLoader classLoader) {
     try {
       findLoadedClassMethod.setAccessible(true);
