@@ -37,9 +37,9 @@ public class AdviceReferenceVisitor extends ClassVisitor {
     for (int i = 0; i < interfaces.length; ++i) {
       ifaces.add(Utils.getClassName(interfaces[i]));
     }
-    references.put(
-        Utils.getClassName(name),
+    addReference (
         new Reference(
+            new Reference.Source[]{new Reference.Source("FIXME", 2)},
             Utils.getClassName(name),
             Utils.getClassName(superName),
             ifaces.toArray(new String[0])));
@@ -78,7 +78,7 @@ public class AdviceReferenceVisitor extends ClassVisitor {
         final String descriptor,
         final boolean isInterface) {
       // TODO: flag for invoke type
-      addReference(new Reference(Utils.getClassName(owner), null, null));
+      addReference(new Reference(new Reference.Source[]{}, Utils.getClassName(owner), null, null));
     }
   }
 

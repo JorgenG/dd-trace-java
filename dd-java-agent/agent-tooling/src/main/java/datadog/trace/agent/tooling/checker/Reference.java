@@ -8,18 +8,20 @@ import java.util.*;
 
 /** A reference to a single class file. */
 public class Reference {
-  private Source[] sources;
-  private String className;
-  private String superName;
-  private int flags = 0;
-  private String[] interfaceNames;
-  private Field[] fields;
-  private Method[] methods;
+  private final Source[] sources;
+  private final String className;
+  private final String superName;
+  private final int flags = 0;
+  private final String[] interfaceNames;
+  // TODO
+  // private Field[] fields;
+  // private Method[] methods;
 
-  public Reference(String className, String superName, String[] interfaces) {
+  public Reference(Source[] sources, String className, String superName, String[] interfaces) {
     this.className = className;
     this.superName = superName;
-    this.interfaceNames = interfaces;
+    this.sources = null == sources ? new Source[0] : sources;
+    this.interfaceNames = null == interfaces ? new String[0] : interfaces;
   }
 
   public String getClassName() {
@@ -37,15 +39,15 @@ public class Reference {
       throw new IllegalStateException("illegal merge " + this + " != " + anotherReference);
     }
     String superName = null == this.superName ? anotherReference.superName : this.superName;
-    Set<String> interfaces = new HashSet<>();
-    if (null != this.interfaceNames) {
-      interfaces.addAll(Arrays.asList(this.interfaceNames));
-    }
-    if (null != anotherReference.interfaceNames) {
-      interfaces.addAll(Arrays.asList(anotherReference.interfaceNames));
-    }
 
-    return new Reference(className, superName, interfaces.toArray(new String[0]));
+    return new Reference(mergeWithoutDuplicates(sources, anotherReference.sources), className, superName, mergeWithoutDuplicates(interfaceNames, anotherReference.interfaceNames));
+  }
+
+  private <T> T[] mergeWithoutDuplicates(T[] array1, T[] array2) {
+    final Set<T> set = new HashSet<>();
+    set.addAll(Arrays.asList(array1));
+    set.addAll(Arrays.asList(array2));
+    return set.toArray(array1);
   }
 
   /**
@@ -54,27 +56,23 @@ public class Reference {
    * @param loader
    * @return A list of mismatched sources. A list of size 0 means the reference matches the class.
    */
-  public List<Source> checkMatch(ClassLoader loader) {
+  public List<Mismatch> checkMatch(ClassLoader loader) {
     if (loader == BOOTSTRAP_CLASSLOADER) {
       throw new IllegalStateException("Cannot directly check against bootstrap classloader");
     }
-    if (loader.getResource(Utils.getResourceName(className)) != null) {
+    if (onClasspath(className, loader)) {
       return new ArrayList<>(0);
     } else {
-      final List<Source> mismatches = new ArrayList<Source>();
-      mismatches.add(new Source("TODO", 1));
+      final List<Mismatch> mismatches = new ArrayList<>();
+      mismatches.add(new Mismatch.MissingClass(new Source("TODO", 1), className));
       return mismatches;
     }
   }
 
-  private class Method {
-    // sources
-    // signature
-  }
-
-  private class Field {
-    // sources
-    // signature
+  private boolean onClasspath(String className, ClassLoader loader) {
+    return loader.getResource(className) != null ||
+      // helper classes are not on the resource path because they are loaded with reflection (See HelperInjector)
+      (className.startsWith("datadog.trace.") && Utils.isClassLoaded(className, loader));
   }
 
   public static class Source {
@@ -86,12 +84,46 @@ public class Reference {
       this.line = line;
     }
 
+    @Override
+    public String toString() {
+      return getName() + ":" + getLine();
+    }
+
     public String getName() {
       return name;
     }
 
     public int getLine() {
       return line;
+    }
+
+    // FIXME: Override equals and hashCode
+  }
+
+  public static abstract class Mismatch {
+    final Source mismatchSource;
+
+    Mismatch(Source mismatchSource) {
+      this.mismatchSource = mismatchSource;
+    }
+
+    @Override
+    public String toString() {
+      return mismatchSource.toString() + " " + getMismatchDetails();
+    }
+
+    abstract String getMismatchDetails();
+
+    public static class MissingClass extends Mismatch {
+      final String className;
+      public MissingClass(Source source, String className) {
+        super(source);
+        this.className = className;
+      }
+      @Override
+      String getMismatchDetails() {
+        return "Missing class " + className;
+      }
     }
   }
 }

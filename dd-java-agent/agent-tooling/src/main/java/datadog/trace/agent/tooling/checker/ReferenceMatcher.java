@@ -45,18 +45,21 @@ public class ReferenceMatcher implements AgentBuilder.RawMatcher {
     return getMismatchedReferenceSources(loader).size() == 0;
   }
 
-  public List<Reference.Source> getMismatchedReferenceSources(ClassLoader loader) {
+  public List<Reference.Mismatch> getMismatchedReferenceSources(ClassLoader loader) {
     if (loader == BOOTSTRAP_LOADER) {
       loader = ((DatadogClassLoader) Utils.getAgentClassLoader()).getBootstrapResourceLocator();
     }
-    final List<Reference.Source> mismatchedReferences = new ArrayList<>(0);
+    final List<Reference.Mismatch> mismatchedReferences = new ArrayList<>(0);
     for (Reference reference : references.values()) {
       mismatchedReferences.addAll(reference.checkMatch(loader));
     }
     // TODO: log mismatches
-    for (Reference.Source mismatch : mismatchedReferences) {
-      // TODO: log more info about why mismatch occurred. Missing method, missing field, signature mismatch.
-      System.out.println(" Mismatched reference: " + mismatch.getName() + ":" + mismatch.getLine());
+    if (mismatchedReferences.size() > 0) {
+      System.out.println("Mismatched instrumentation on classloader " + loader);
+      for (Reference.Mismatch mismatch : mismatchedReferences) {
+       // TODO: log more info about why mismatch occurred. Missing method, missing field, signature mismatch.
+        System.out.println("  " + mismatch.toString());
+      }
     }
     return mismatchedReferences;
   }
