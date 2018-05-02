@@ -1,5 +1,7 @@
 package datadog.trace.agent.tooling.checker;
 
+import datadog.trace.agent.tooling.Utils;
+
 import static datadog.trace.agent.tooling.ClassLoaderMatcher.BOOTSTRAP_CLASSLOADER;
 
 import java.util.*;
@@ -56,7 +58,13 @@ public class Reference {
     if (loader == BOOTSTRAP_CLASSLOADER) {
       throw new IllegalStateException("Cannot directly check against bootstrap classloader");
     }
-    throw new RuntimeException("TODO");
+    if (loader.getResource(Utils.getResourceName(className)) != null) {
+      return new ArrayList<>(0);
+    } else {
+      final List<Source> mismatches = new ArrayList<Source>();
+      mismatches.add(new Source("TODO", 1));
+      return mismatches;
+    }
   }
 
   private class Method {

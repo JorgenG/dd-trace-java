@@ -31,35 +31,6 @@ public class ReferenceMatcher implements AgentBuilder.RawMatcher {
     // TODO: pass in references
   }
 
-  // TODO: Don't add references if instrumentation is already in referenceSources
-  private void addReferencesFrom(String instrumentationClassName) {
-    try {
-      final InputStream in =
-          ReferenceMatcher.class
-              .getClassLoader()
-              .getResourceAsStream(Utils.getResourceName(instrumentationClassName));
-      try {
-        final AdviceReferenceVisitor cv = new AdviceReferenceVisitor(null);
-        final ClassReader reader = new ClassReader(in);
-        reader.accept(cv, ClassReader.SKIP_DEBUG);
-
-        Map<String, Reference> instrumentationReferences = cv.getReferences();
-        for (Map.Entry<String, Reference> entry : instrumentationReferences.entrySet()) {
-          if (references.containsKey(entry.getKey())) {
-            references.put(entry.getKey(), references.get(entry.getKey()).merge(entry.getValue()));
-          } else {
-            references.put(entry.getKey(), entry.getValue());
-          }
-        }
-
-      } finally {
-        in.close();
-      }
-    } catch (IOException ioe) {
-      throw new IllegalStateException(ioe);
-    }
-  }
-
   @Override
   public boolean matches(
       TypeDescription typeDescription,
@@ -94,7 +65,7 @@ public class ReferenceMatcher implements AgentBuilder.RawMatcher {
     // load or check cache for advice class names
     for (String adviceClass : adviceClassNames) {
       // TODO: cache during compilation
-      if (!referenceSources.contains(adviceClassNames)) {
+      if (!referenceSources.contains(adviceClass)) {
         referenceSources.add(adviceClass);
         System.out.println("FIXME: CREATING REFERENCES FOR::: " + adviceClass);
         for (Map.Entry<String, Reference> entry :
