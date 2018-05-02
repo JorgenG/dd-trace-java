@@ -1,26 +1,23 @@
 package datadog.trace.agent.tooling.checker;
 
+import static net.bytebuddy.dynamic.loading.ClassLoadingStrategy.BOOTSTRAP_LOADER;
+
 import datadog.trace.agent.tooling.Utils;
 import datadog.trace.bootstrap.DatadogClassLoader;
-import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.description.method.MethodDescription;
-import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.agent.builder.AgentBuilder.Transformer;
-import net.bytebuddy.dynamic.DynamicType;
-import net.bytebuddy.jar.asm.ClassReader;
-import net.bytebuddy.jar.asm.ClassVisitor;
-import net.bytebuddy.matcher.ElementMatcher;
-import net.bytebuddy.utility.JavaModule;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.ProtectionDomain;
 import java.util.*;
-
-import static net.bytebuddy.dynamic.loading.ClassLoadingStrategy.BOOTSTRAP_LOADER;
+import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.AgentBuilder.Transformer;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.jar.asm.ClassReader;
+import net.bytebuddy.utility.JavaModule;
 
 /**
- * A bytebuddy matcher that matches if expected references (classes, fields, methods, visibility) are present on the classpath.
+ * A bytebuddy matcher that matches if expected references (classes, fields, methods, visibility)
+ * are present on the classpath.
  */
 public class ReferenceMatcher implements AgentBuilder.RawMatcher {
   // TODO: Cache safe and unsafe classloaders
@@ -37,33 +34,39 @@ public class ReferenceMatcher implements AgentBuilder.RawMatcher {
   // TODO: Don't add references if instrumentation is already in referenceSources
   private void addReferencesFrom(String instrumentationClassName) {
     try {
-    // ReferenceMatcher.class.getClassLoader().getResource();
+      final InputStream in =
+          ReferenceMatcher.class
+              .getClassLoader()
+              .getResourceAsStream(Utils.getResourceName(instrumentationClassName));
+      try {
+        final AdviceReferenceVisitor cv = new AdviceReferenceVisitor(null);
+        final ClassReader reader = new ClassReader(in);
+        reader.accept(cv, ClassReader.SKIP_DEBUG);
 
-    final InputStream in = ReferenceMatcher.class.getClassLoader().getResourceAsStream(Utils.getResourceName(instrumentationClassName));
-    try {
-      final AdviceReferenceVisitor cv = new AdviceReferenceVisitor(null);
-      final ClassReader reader = new ClassReader(in);
-      reader.accept(cv, ClassReader.SKIP_DEBUG);
-
-      Map<String, Reference> instrumentationReferences = cv.getReferences();
-      for (Map.Entry<String, Reference> entry : instrumentationReferences.entrySet()) {
-        if (references.containsKey(entry.getKey())) {
-          references.put(entry.getKey(), references.get(entry.getKey()).merge(entry.getValue()));
-        } else {
-          references.put(entry.getKey(), entry.getValue());
+        Map<String, Reference> instrumentationReferences = cv.getReferences();
+        for (Map.Entry<String, Reference> entry : instrumentationReferences.entrySet()) {
+          if (references.containsKey(entry.getKey())) {
+            references.put(entry.getKey(), references.get(entry.getKey()).merge(entry.getValue()));
+          } else {
+            references.put(entry.getKey(), entry.getValue());
+          }
         }
-      }
 
-    } finally {
-      in.close();
-    }
+      } finally {
+        in.close();
+      }
     } catch (IOException ioe) {
       throw new IllegalStateException(ioe);
     }
   }
 
   @Override
-  public boolean matches(TypeDescription typeDescription, ClassLoader classLoader, JavaModule module, Class<?> classBeingRedefined, ProtectionDomain protectionDomain) {
+  public boolean matches(
+      TypeDescription typeDescription,
+      ClassLoader classLoader,
+      JavaModule module,
+      Class<?> classBeingRedefined,
+      ProtectionDomain protectionDomain) {
     return matches(classLoader);
   }
 
@@ -73,7 +76,7 @@ public class ReferenceMatcher implements AgentBuilder.RawMatcher {
 
   public List<Reference.Source> getMismatchedReferenceSources(ClassLoader loader) {
     if (loader == BOOTSTRAP_LOADER) {
-      loader = ((DatadogClassLoader)Utils.getAgentClassLoader()).getBootstrapResourceLocator();
+      loader = ((DatadogClassLoader) Utils.getAgentClassLoader()).getBootstrapResourceLocator();
     }
     final List<Reference.Source> mismatchedReferences = new ArrayList<>(0);
     for (Reference reference : references.values()) {
@@ -94,7 +97,10 @@ public class ReferenceMatcher implements AgentBuilder.RawMatcher {
       if (!referenceSources.contains(adviceClassNames)) {
         referenceSources.add(adviceClass);
         System.out.println("FIXME: CREATING REFERENCES FOR::: " + adviceClass);
-        for (Map.Entry<String, Reference> entry : AdviceReferenceVisitor.createReferencesFrom(adviceClass, ReferenceMatcher.class.getClassLoader()).entrySet()) {
+        for (Map.Entry<String, Reference> entry :
+            AdviceReferenceVisitor.createReferencesFrom(
+                    adviceClass, ReferenceMatcher.class.getClassLoader())
+                .entrySet()) {
           if (references.containsKey(entry.getKey())) {
             references.put(entry.getKey(), references.get(entry.getKey()).merge(entry.getValue()));
           } else {
@@ -106,7 +112,11 @@ public class ReferenceMatcher implements AgentBuilder.RawMatcher {
 
     return new Transformer() {
       @Override
-      public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder, TypeDescription typeDescription, ClassLoader classLoader, JavaModule module) {
+      public DynamicType.Builder<?> transform(
+          DynamicType.Builder<?> builder,
+          TypeDescription typeDescription,
+          ClassLoader classLoader,
+          JavaModule module) {
         if (ReferenceMatcher.this.matches(classLoader)) {
           return builder;
         } else {

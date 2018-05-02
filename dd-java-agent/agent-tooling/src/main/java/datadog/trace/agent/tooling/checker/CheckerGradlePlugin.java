@@ -7,7 +7,8 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.DynamicType.Builder;
 
 public class CheckerGradlePlugin implements Plugin {
-  private static final TypeDescription InstrumenterTypeDesc = new TypeDescription.ForLoadedType(Instrumenter.class);
+  private static final TypeDescription InstrumenterTypeDesc =
+      new TypeDescription.ForLoadedType(Instrumenter.class);
 
   @Override
   public boolean matches(final TypeDescription target) {
@@ -15,7 +16,7 @@ public class CheckerGradlePlugin implements Plugin {
     boolean isInstrumenter = false;
     TypeDefinition instrumenter = target;
     while (instrumenter != null) {
-      if(instrumenter.getInterfaces().contains(InstrumenterTypeDesc) ) {
+      if (instrumenter.getInterfaces().contains(InstrumenterTypeDesc)) {
         isInstrumenter = true;
         break;
       }

@@ -1,17 +1,28 @@
 package datadog.trace.agent.tooling.checker;
 
-import java.util.List;
-
 import static datadog.trace.agent.tooling.ClassLoaderMatcher.BOOTSTRAP_CLASSLOADER;
 
-/**
- * A reference to a single class file.
- */
+import java.util.*;
+
+/** A reference to a single class file. */
 public class Reference {
   private Source[] sources;
-  private String internalClassName;
+  private String className;
+  private String superName;
+  private int flags = 0;
+  private String[] interfaceNames;
   private Field[] fields;
   private Method[] methods;
+
+  public Reference(String className, String superName, String[] interfaces) {
+    this.className = className;
+    this.superName = superName;
+    this.interfaceNames = interfaces;
+  }
+
+  public String getClassName() {
+    return className;
+  }
 
   /**
    * TODO: doc
@@ -20,8 +31,19 @@ public class Reference {
    * @return a new Reference which merges the two references
    */
   public Reference merge(Reference anotherReference) {
-    throw new RuntimeException("TODO");
-    // TODO: throw exception if references are incompatible
+    if (!anotherReference.getClassName().equals(className)) {
+      throw new IllegalStateException("illegal merge " + this + " != " + anotherReference);
+    }
+    String superName = null == this.superName ? anotherReference.superName : this.superName;
+    Set<String> interfaces = new HashSet<>();
+    if (null != this.interfaceNames) {
+      interfaces.addAll(Arrays.asList(this.interfaceNames));
+    }
+    if (null != anotherReference.interfaceNames) {
+      interfaces.addAll(Arrays.asList(anotherReference.interfaceNames));
+    }
+
+    return new Reference(className, superName, interfaces.toArray(new String[0]));
   }
 
   /**
