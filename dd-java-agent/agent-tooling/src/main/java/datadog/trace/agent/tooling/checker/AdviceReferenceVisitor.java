@@ -12,6 +12,7 @@ import net.bytebuddy.jar.asm.*;
  */
 public class AdviceReferenceVisitor extends ClassVisitor {
   private Map<String, Reference> references = new HashMap<>();
+  private String adviceClassName;
 
   public AdviceReferenceVisitor(ClassVisitor classVisitor) {
     super(Opcodes.ASM6, classVisitor);
@@ -33,16 +34,17 @@ public class AdviceReferenceVisitor extends ClassVisitor {
       final String signature,
       final String superName,
       final String[] interfaces) {
-    List<String> ifaces = new ArrayList<>(interfaces.length);
+    adviceClassName = Utils.getClassName(name);
+    final String[] interfaceClassNames = new String[interfaces.length];
     for (int i = 0; i < interfaces.length; ++i) {
-      ifaces.add(Utils.getClassName(interfaces[i]));
+      interfaceClassNames[i] = Utils.getClassName(interfaces[i]);
     }
     addReference (
         new Reference(
-            new Reference.Source[]{new Reference.Source("FIXME", 2)},
+            new Reference.Source[]{},
             Utils.getClassName(name),
             Utils.getClassName(superName),
-            ifaces.toArray(new String[0])));
+            interfaceClassNames));
     super.visit(version, access, name, signature, superName, interfaces);
   }
 
@@ -59,9 +61,16 @@ public class AdviceReferenceVisitor extends ClassVisitor {
 
   private class AdviceReferenceMethodVisitor extends MethodVisitor {
     private boolean isAdviceMethod = false;
+    private int currentLineNumber = -1;
 
     public AdviceReferenceMethodVisitor(MethodVisitor methodVisitor) {
       super(Opcodes.ASM6, methodVisitor);
+    }
+
+    @Override
+    public void visitLineNumber(final int line, final Label start) {
+      currentLineNumber = line;
+      super.visitLineNumber(line, start);
     }
 
     // TODO: visit annotations
@@ -78,7 +87,8 @@ public class AdviceReferenceVisitor extends ClassVisitor {
         final String descriptor,
         final boolean isInterface) {
       // TODO: flag for invoke type
-      addReference(new Reference(new Reference.Source[]{}, Utils.getClassName(owner), null, null));
+      addReference(new Reference(new Reference.Source[]{new Reference.Source(adviceClassName, currentLineNumber)},
+        Utils.getClassName(owner), null, null));
     }
   }
 
@@ -101,7 +111,7 @@ public class AdviceReferenceVisitor extends ClassVisitor {
         try {
           final AdviceReferenceVisitor cv = new AdviceReferenceVisitor(null);
           final ClassReader reader = new ClassReader(in);
-          reader.accept(cv, ClassReader.SKIP_DEBUG);
+          reader.accept(cv, ClassReader.SKIP_FRAMES);
 
           Map<String, Reference> instrumentationReferences = cv.getReferences();
           for (Map.Entry<String, Reference> entry : instrumentationReferences.entrySet()) {

@@ -64,7 +64,7 @@ public class Reference {
       return new ArrayList<>(0);
     } else {
       final List<Mismatch> mismatches = new ArrayList<>();
-      mismatches.add(new Mismatch.MissingClass(new Source("TODO", 1), className));
+      mismatches.add(new Mismatch.MissingClass(sources, className));
       return mismatches;
     }
   }
@@ -101,23 +101,23 @@ public class Reference {
   }
 
   public static abstract class Mismatch {
-    final Source mismatchSource;
+    final Source[] mismatchSources;
 
-    Mismatch(Source mismatchSource) {
-      this.mismatchSource = mismatchSource;
+    Mismatch(Source[] mismatchSources) {
+      this.mismatchSources = mismatchSources;
     }
 
     @Override
     public String toString() {
-      return mismatchSource.toString() + " " + getMismatchDetails();
+      return mismatchSources[0].toString() + " " + getMismatchDetails();
     }
 
     abstract String getMismatchDetails();
 
     public static class MissingClass extends Mismatch {
       final String className;
-      public MissingClass(Source source, String className) {
-        super(source);
+      public MissingClass(Source[] sources, String className) {
+        super(sources);
         this.className = className;
       }
       @Override
